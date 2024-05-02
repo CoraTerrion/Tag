@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Making your first Phaser 3 Game - Part 8</title>
+    <script src="//cdn.jsdelivr.net/npm/phaser@3.11.0/dist/phaser.js"></script>
+    <style type="text/css">
+        body {
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+
+<script type="text/javascript">
+
+var config = {
+    type: Phaser.AUTO,
+    width: window.innerWidth,
+    height: window.innerHeight,
+    physics: {
+        default: 'arcade',
+        arcade: {
+            gravity: { y: 500 },
+            debug: false // Set to true for debugging physics bodies
+        }
+    },
+    scene: {
+        preload: preload,
+        create: create,
+        update: update
+    }
+};
+
+var game = new Phaser.Game(config);
+var player1;
+var player2;
+var cursors1;
+var cursors2;
+var tagged = false;
+var gameOver = false;
+var frozen = true; // Initial frozen state
+var barTimer;
+var countdownText;
+var countdownTimer;
+var platforms; // Declare platforms variable
+
+function preload() {
+    this.load.image('sky', 'assets/background/sky.png');
+    this.load.image('mountain1', 'assets/background/mountains.png');
+    this.load.image('mountain2', 'assets/background/mountains2.png');
+    this.load.image('ground', 'assets/platform.png');
+    this.load.image('brick', 'assets/brick.png');
+    this.load.image('hill', 'assets/background/hill.png');
+    this.load.spritesheet('dude', 'assets/dude.png', { frameWidth: 32, frameHeight: 48 });
+    this.load.spritesheet('dude2', 'assets/dude2.png', { frameWidth: 32, frameHeight: 48 });
+    this.load.image('mountain3', 'assets/background/mountains3.png',{ frameWidth: 32, frameHeight: 48 });
+}
+
+function create() {
+    // Background sky image
+    this.add.image(400, 300, 'sky').setScrollFactor(0).setScale(.6, 1);
+
+    // Parallax effect for mountains
+    this.mountains3 = this.add.tileSprite(100, 1150, 6000, 6000, 'mountain3').setScale(.7, 1); // Adjusted vertical position
+    this.mountains3.setScrollFactor(0.25); // Scrolls at a quarter of the camera speed
+
+    this.mountains1 = this.add.tileSprite(600, 1100, 6000, 6000, 'mountain1').setScale(.7, 1); // Adjusted vertical position
+    this.mountains1.setScrollFactor(0.5); // Scrolls at half of the camera speed
+
+    this.mountains2 = this.add.tileSprite(600, 1000, 6000, 6000, 'mountain2').setScale(.93, 1); // Adjusted vertical position
+    this.mountains2.setScrollFactor(0.75); // Adjust the scroll factor as needed
+
+    this.hill = this.add.tileSprite(0, 1450, 6000, 6000, 'hill').setScale(1.2, 2);
+    this.hill.setScrollFactor(0.70); // Adjust the scroll factor as needed
+
+
+    platforms = this.physics.add.staticGroup();
+
+    platforms.create(700, 745, 'ground').setScale(20, 3.5).refreshBody();
+
+    createPlatforms(); // Call createPlatforms function
+
+    player1 = this.physics.add.sprite(300, 550, 'dude');
+    player1.setBounce(0.2);
+    player1.setCollideWorldBounds(true);
+
+    player2 = this.physics.add.sprite(300, 650, 'dude2');
+    player2.setBounce(0.4);
+    player2.setCollideWorldBounds(true);
+
+
+    this.anims.create({
+        key: 'left',
+        frames: this.anims.generateFrameNumbers('dude', { start: 0, end: 3 }),
+        frameRate: 10,
+        repeat: -1
+    });
+
+    this.anims.create({
+        key: 'turn',
+        frames: [{ key: 'dude', frame: 4 }],
+        frameRate: 20
+    });
+
+    this.anims.create({
+        key: 'right',
+        frames: this.anims.generateFrameNumbers('dude', { start: 5, end: 8 }),
+        frameRate: 10,
+        repeat: -1
+    });
+
+    this.anims.create({
+        key: 'left2',
+        frames: this.anims.generateFrameNumbers('dude2', { start: 0, end: 3 }),
+        frameRate: 10,
+        repeat: -1
+    });
+
+    this.anims.create({
+        key: 'turn2',
+        frames: [{ key: 'dude2', frame: 4 }],
+        frameRate: 20
+    });
+
+    this.anims.create({
+        key: 'right2',
+        frames: this.anims.generateFrameNumbers('dude2', { start: 5, end: 8 }),
+        frameRate: 10,
+        repeat: -1
+    });
+
+    cursors1 = this.input.keyboard.createCursorKeys();
+    cursors2 = this.input.keyboard.addKeys({
+        up: Phaser.Input.Keyboard.KeyCodes.W,
+        down: Phaser.Input.Keyboard.KeyCodes.S,
+        left: Phaser.Input.Keyboard.KeyCodes.A,
+        right: Phaser.Input.Keyboard.KeyCodes.D
+    });
+
+    this.physics.add.collider([player1, player2], platforms);
+
+    this.cameras.main.setBounds(0, 0, 4000, 800);
+    this.cameras.main.startFollow(player1);
+    this.physics.world.setBounds(0, 0, 4000, 800);
+
+    this.physics.add.collider([player1, player2], platforms, null, this);
+    this.physics.add.collider([player1, player2], platforms, null, this);
+
+    // Timer to unfreeze players after 10 seconds
+    this.time.delayedCall(6000, function () {
+        frozen = false;
+    }, [], this);
+
+    // Add countdown text
+    countdownText = this.add.text(300, 500, '', { fontSize: '64px', fill: '#fff' });
+    countdownText.setOrigin(0.5);
+
+    // Start countdown timer
+    startCountdown(6);
+}
+
+function update() {
+    if (!gameOver) {
+        if (!frozen) {
+            // Player 1 movement
+            if (cursors1.left.isDown) {
+                player1.setVelocityX(-200);
+                player1.anims.play('left', true);
+            } else if (cursors1.right.isDown) {
+                player1.setVelocityX(200);
+                player1.anims.play('right', true);
+            } else {
+                player1.setVelocityX(0);
+                player1.anims.play('turn');
+            }
+
+            // Player 1 jump when touching down or side
+            if ((cursors1.up.isDown && player1.body.onFloor()) || (cursors1.up.isDown && player1.body.blocked.right) || (cursors1.up.isDown && player1.body.blocked.left)) {
+                player1.setVelocityY(-400);
+            }
+
+            // Player 2 movement
+            if (cursors2.left.isDown) {
+                player2.setVelocityX(-240);
+                player2.anims.play('left2', true);
+            } else if (cursors2.right.isDown) {
+                player2.setVelocityX(240);
+                player2.anims.play('right2', true);
+            } else {
+                player2.setVelocityX(0);
+                player2.anims.play('turn2');
+            }
+
+            // Player jump when touching down or side
+            if ((cursors2.up.isDown && player2.body.onFloor()) || (cursors2.up.isDown && player2.body.blocked.right) || (cursors2.up.isDown && player2.body.blocked.left)) {
+                player2.setVelocityY(-330);
+            }
+
+            // Check if player 2 is off-screen and apply movement accordingly
+            if (player2.x < this.cameras.main.scrollX || player2.x > this.cameras.main.scrollX + this.cameras.main.width) {
+                player1.setVelocity(0);
+                player1.anims.play('turn');
+
+                if (player2.x < this.cameras.main.scrollX) {
+                    player2.setVelocityX(240);
+                } else {
+                    player2.setVelocityX(-240);
+                }
+            }
+
+            // Check if player 2 tags player 1 and display "seeker wins" text
+            if (Phaser.Geom.Intersects.RectangleToRectangle(player2.getBounds(), player1.getBounds())) {
+                const centerX = this.cameras.main.scrollX + this.cameras.main.width / 2;
+                const centerY = this.cameras.main.scrollY + this.cameras.main.height / 2;
+
+                const text = this.add.text(centerX, centerY, 'Seeker wins', { fontSize: '128px', fill: '#FFC0CB' });
+                text.setOrigin(0.5);
+
+                player1.setVelocity(0);
+                player2.setVelocity(0);
+                cursors1.enabled = false;
+                cursors2.enabled = false;
+
+                frozen = true;
+                gameOver = true;
+            }
+        }
+    }
+}
+
+
+function startCountdown(seconds) {
+    countdownTimer = setInterval(function () {
+        seconds--;
+        countdownText.setText(seconds);
+
+        if (seconds <= 0) {
+            clearInterval(countdownTimer);
+            countdownText.setText('Tag!'); 
+            setTimeout(function () {
+                countdownText.setVisible(false); 
+            }, 1000); 
+        }
+    }, 1000);
+}
+
+
+function createPlatforms() {
+    // Define platform data as an array of positions and scales
+    const platformData = [
+        { x: 300, y: 595, scaleX: 2, scaleY: 0.2 }, 
+        { x: 100, y: 625, scaleX: 1, scaleY: 0.2 }, 
+        { x: 600, y: 510, scaleX: 3.75, scaleY: 0.2 },
+        { x: 320, y: 395, scaleX: 3, scaleY: 0.2 },
+        { x: 150, y: 470, scaleX: 1, scaleY: 0.2 },
+        { x: 450, y: 290, scaleX: 1, scaleY: 0.2 },
+        { x: 600, y: 190, scaleX: 3, scaleY: 0.2 },
+        { x: 200, y: 220, scaleX: 2.7, scaleY: 0.2 },
+        { x: 650, y: 625, scaleX: 1, scaleY: 0.2 },
+        { x: 950, y: 290, scaleX: 4, scaleY: 0.2 },
+        { x: 750, y: 390, scaleX: 1.75, scaleY: 0.2 },
+        { x: 20, y: 320, scaleX: 1, scaleY: 0.2 },
+        { x: 0, y: 520, scaleX: 1, scaleY: 0.2 },
+
+        { x: 1000, y: 520, scaleX: 2, scaleY: 0.2 }, 
+        { x: 900, y: 625, scaleX: 1, scaleY: 0.2 }, 
+        { x: 1600, y: 510, scaleX: 3.75, scaleY: 0.2 },
+        { x: 1320, y: 395, scaleX: 3, scaleY: 0.2 },
+        { x: 1150, y: 470, scaleX: 1, scaleY: 0.2 },
+        { x: 1450, y: 290, scaleX: 1, scaleY: 0.2 },
+        { x: 1600, y: 190, scaleX: 3, scaleY: 0.2 },
+        { x: 1200, y: 220, scaleX: 2.7, scaleY: 0.2 },
+        { x: 1650, y: 625, scaleX: 1, scaleY: 0.2 },
+        { x: 1950, y: 290, scaleX: 4, scaleY: 0.2 },
+        { x: 1750, y: 390, scaleX: 1.75, scaleY: 0.2 },
+        { x: 1320, y: 550, scaleX: 1, scaleY: 0.2 },
+        { x: 1000, y: 520, scaleX: 1, scaleY: 0.2 },
+
+        { x: 2000, y: 520, scaleX: 2, scaleY: 0.2 }, 
+        { x: 2100, y: 625, scaleX: 1, scaleY: 0.2 }, 
+        { x: 2800, y: 510, scaleX: 3.75, scaleY: 0.2 },
+        { x: 2520, y: 395, scaleX: 3, scaleY: 0.2 },
+        { x: 2350, y: 470, scaleX: 1, scaleY: 0.2 },
+        { x: 2650, y: 290, scaleX: 1, scaleY: 0.2 },
+        { x: 2800, y: 190, scaleX: 3, scaleY: 0.2 },
+        { x: 2400, y: 220, scaleX: 2.7, scaleY: 0.2 },
+        { x: 2850, y: 625, scaleX: 1, scaleY: 0.2 },
+        { x: 3150, y: 290, scaleX: 4, scaleY: 0.2 },
+        { x: 2950, y: 390, scaleX: 1.75, scaleY: 0.2 },
+        { x: 2520, y: 550, scaleX: 1, scaleY: 0.2 },
+        { x: 2000, y: 520, scaleX: 1, scaleY: 0.2 }, 
+
+        { x: 3200, y: 520, scaleX: 1.5, scaleY: 0.2 }, 
+        { x: 3280, y: 425, scaleX: 1, scaleY: 0.2 }, 
+        { x: 3500, y: 510, scaleX: 2.5, scaleY: 0.2 },
+        { x: 3720, y: 395, scaleX: 2, scaleY: 0.2 },
+        { x: 3390, y: 370, scaleX: 1.2, scaleY: 0.2 },
+        { x: 3850, y: 290, scaleX: 1.5, scaleY: 0.2 },
+        { x: 3800, y: 190, scaleX: 2, scaleY: 0.2 },
+        { x: 3615, y: 220, scaleX: 1.8, scaleY: 0.2 },
+        { x: 3430, y: 625, scaleX: 1, scaleY: 0.2 },
+        { x: 3980, y: 290, scaleX: 3, scaleY: 0.2 },
+    ];
+
+    // Loop through the platform data array to create platforms
+    platformData.forEach(data => {
+        const platform = platforms.create(data.x, data.y, 'brick');
+        platform.setScale(data.scaleX, data.scaleY).refreshBody();
+    });
+}
+
+
+</script>
+
+</body>
+</html>
